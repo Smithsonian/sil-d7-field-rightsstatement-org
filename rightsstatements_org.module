@@ -135,6 +135,7 @@ function rightsstatements_org_field_formatter_view($entity_type, $entity, $field
           'attributes' => array(
             'title' => $rs['statement'],
             'alt' => 'Logo for '.$rs['statement'],
+            'class' => 'rights-statements-org',
           ), 
         ));
 
