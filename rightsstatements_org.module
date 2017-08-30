@@ -1,0 +1,293 @@
+<?php
+/**
+ * @file
+ * A Field Type for storing data from RightsStatements.org.
+ */
+
+define('RSORG_MODULE_PATH', drupal_get_path('module', 'rightsstatements_org'));
+include_once(RSORG_MODULE_PATH.'/includes/rightsstatements_org.inc.php');
+
+
+/**
+ * @defgroup rightsstatements_org 
+ * @ingroup rightsstatements_org
+ * @{
+ * Right Statements using RightsStatements.org 
+ * 
+ * The module implements a field to contain a value from http://rightsstatements.org
+ * to assist cultural heritage institutions in providing clear and easy to use indicators
+ * of the copyright status of their content.
+ * 
+ * The module also implements a configuration page to decide on if and how the statement
+ * will be linked.
+ * 
+ * @see field_types
+ * @see field
+ */
+
+/**
+ * Implements hook_field_info().
+ *
+ * Provide a description of the field.
+ */
+function rightsstatements_org_field_info() {
+  return array(
+    // We name our field as the associative name of the array.
+    'field_rights_statements_org' => array(
+      'label' => t('RightsStatement.org'),
+      'description' => t('A rights statement defined by RightsStatements.org that can be used by cultural heritage institutions to communicate the copyright and re-use status of digital objects to the public'),
+      'default_widget' => 'rightsstatement_widget',
+      'default_formatter' => 'rightsstatement_formatter',
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_is_empty().
+ *
+ */
+function rightsstatements_org_field_is_empty($item, $field) {
+  return empty($item['stmt']);
+}
+
+/**
+ * Implements hook_field_formatter_info().
+ *
+ * We need to tell Drupal that we have two different types of formatters
+ * for this field. One is a plain text with optional link the other is an
+ * icon from RightsStatement.org. Both have an optional link as defined in 
+ * the configuration.
+ *
+ * @see rightsstatements_org_field_formatter_view()
+ */
+function rightsstatements_org_field_formatter_info() {
+  return array(
+    // This formatter just displays the hex value in the color indicated.
+    'rightsstatement_text_formatter' => array(
+      'label' => t('Text with optional link'),
+      'field types' => array('field_rights_statements_org'),
+    ),
+    'rightsstatement_icon_formatter' => array(
+      'label' => t('Icon with optional link'),
+      'field types' => array('field_rights_statements_org'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ *
+ * Two formatters are implemented.
+ * - rightsstatement_text_formatter outputs the rights statement as plain text 
+ *   with an optional link as defined in the configuration
+ * - rightsstatement_icon_formatter outputs the rights statement as an image
+ *   with an optional link as defined in the configuration
+ *
+ * @see rightsstatements_org_field_formatter_info()
+ */
+function rightsstatements_org_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  drupal_add_css(RSORG_MODULE_PATH.'/css/rightsstatements_org.css');
+
+  $element = array();
+  $values = _get_rightsstatement_values();
+  switch ($display['type']) {
+    // This formatter simply outputs the field as text and with a color.
+    case 'rightsstatement_text_formatter':
+      foreach ($items as $delta => $item) {
+        if (isset($item['stmt'])) {
+          $rs = $values[$item['stmt']];
+          $link = variable_get('rightsstatements_org_link', 2);
+          $url = null;
+          // Are we linking the text?
+          if ($link == 0) {
+            // We have no link, just display the image.
+            $element[$delta] = array(
+              '#markup' => t('@stmt', array('@stmt' => $rs['statement'])),
+            );            
+          } else {
+            // We have a link, which one do we use?
+            if ($link == 1) { // Custom Link
+              $url = variable_get('rightsstatements_org_custom_url', '');
+            } elseif ($link == 2) { // rightstatement.org
+              $url = $rs['uri'];
+            }
+            // Build the render array
+            $element[$delta] = array(
+              '#type' => 'html_tag',
+              '#tag' => 'a',
+              '#attributes' => array('href' => $url),
+              '#value' => t('@stmt', array('@stmt' => $rs['statement'])),
+            );
+          }
+        }
+      }
+      break;
+
+    case 'rightsstatement_icon_formatter':
+      foreach ($items as $delta => $item) {
+        $rs = $values[$item['stmt']];
+        $link = variable_get('rightsstatements_org_link', 2);
+        $url = null;
+        // Determine which image to display. Currently defaulting to blue/white with dark text.
+        // @todo Add a configuration setting to allow the user to choose which version of the image to display.
+        $img = theme('image', array(
+          'path' => RSORG_MODULE_PATH.'/images/'.$rs['image_slug'].'.dark-white-interior-blue-type.png',
+          'attributes' => array(
+            'title' => $rs['statement'],
+            'alt' => 'Logo for '.$rs['statement'],
+          ), 
+        ));
+
+          // Are we linking the image?
+        if ($link == 0) {
+          // We have no link, just display the image.
+          $element[$delta] = array(
+            '#markup' => $img,
+          );            
+        } else {
+          // We have a link, which one do we use?
+          if ($link == 1) { // Custom Link
+            $url = variable_get('rightsstatements_org_custom_url', '');
+          } elseif ($link == 2) { // rightstatement.org
+            $url = $rs['uri'];
+          }
+          // Build the render array
+          $element[$delta] = array(
+            '#type' => 'link',
+            '#title' => $img,
+            '#href' => $url,
+            '#options' => array('html' => TRUE, 'title' => $rs['statement']),
+          );
+        }
+      }
+      break;
+  }
+
+  return $element;
+}
+
+/**
+ * Implements hook_field_widget_info().
+ *
+ * @see rightsstatements_org_field_widget_form()
+ */
+function rightsstatements_org_field_widget_info() {
+  return array(
+    'rightsstatement_widget' => array(
+      'label' => t('Select list'),
+      'field types' => array('field_rights_statements_org'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_widget_form().
+ *
+ * Displays a drop-down to select the proper statement.
+ * 
+ */
+function rightsstatements_org_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+  $values = _get_rightsstatement_values();
+  $value = isset($items[$delta]['stmt']) ? $items[$delta]['stmt'] : '';
+  $widget = $element;
+  $widget['#delta'] = $delta;
+
+  switch ($instance['widget']['type']) {
+
+    case 'rightsstatement_widget':
+      $options = array();
+      $options[''] = '(none selected)';
+      foreach ($values as $r => $v) {
+        $options[$r] = $v['statement'];
+      }
+      $widget += array(
+        '#type' => 'select',
+        '#title' => t('Selected'),
+        '#options' => $options,
+        '#default_value' => $value,
+        '#description' => t('Select one of the rights statements.'),
+      );
+      break;
+  }
+
+  $element['stmt'] = $widget;
+  return $element;
+}
+
+/**
+ * Implements hook_menu().
+ *
+ */
+function rightsstatements_org_menu() {
+  $items['admin/config/content/rightsstatements'] = array(
+    'title' => 'RightsStatements.org',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('rightsstatements_org_admin'),
+    'access arguments' => array('administer content types'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}
+
+/**
+ * Callback function for a menu item in rightsstatements_org_menu()
+ * 
+ * Displays the admin form for making global settings to how the statements are displayed.
+ *
+ */
+function rightsstatements_org_admin() {
+  drupal_add_css(RSORG_MODULE_PATH.'/css/rightsstatements_org.admin.css');
+
+  // @todo Add a configuration setting to allow the user to choose which version of the image to display.
+  // @todo Add a configuration setting to choose which statements are allowed across the site.
+  
+  $form = array();
+  $form['#validate'] = array('rightsstatements_org_admin_validate');
+  $form['rightsstatements_org_link'] = array(
+    '#type' => 'radios',
+    '#title' => t('Link statement?'),
+    '#default_value' => variable_get('rightsstatements_org_link', 2),
+    '#options' => array(
+      0 => 'No Link', 
+      1 => 'Link to Custom URL', 
+      2 => 'Link to RightsStatement.org'
+    ),
+    '#description' => t("Should the statement displayed on the page link to RightsStatement.org or to a custom page?"),
+    '#required' => TRUE,
+  );
+
+  $form['rightsstatements_org_custom_url'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Custom URL'),
+    '#default_value' => variable_get('rightsstatements_org_custom_url', ''),
+    '#size' => 40,
+    '#maxlength' => 255,
+    '#description' => t("If <strong>Link to Custom URL</strong> is chosen above, where should the link go? May be a full URL or a path to a local page."),
+    '#required' => FALSE,
+  );
+
+  return system_settings_form($form);
+}
+
+
+/**
+ * Callback function for a menu item in rightsstatements_org_admin()
+ * 
+ * Validates the content submitted on the admin form.
+ *
+ */
+
+function rightsstatements_org_admin_validate($form, &$form_state) {
+  $url = trim($form_state['values']['rightsstatements_org_custom_url']);
+
+  // If we're using a custom link, let's validate it
+  if ($form_state['values']['rightsstatements_org_link'] == 1) {
+    if ($url != '') {
+      if (!valid_url($url)) {
+        form_set_error('rightsstatements_org_custom_url', t('Please enter a valid URL.'));    
+      }
+    } else {
+      form_set_error('rightsstatements_org_custom_url', t('A Custom URL is required.'));        
+    }
+  }
+}

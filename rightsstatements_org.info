@@ -1,0 +1,8 @@
+name = RightsStatement.org Field
+description = An implementation of a field to contain values from RightsStatement.org
+package = Fields
+core = 7.x
+version = 7.x-1.0
+files[] = rightsstatement_org.install
+files[] = includes/rightsstatement_org.inc.php
+configure = admin/config/content/rightsstatements
