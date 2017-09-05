@@ -292,3 +292,67 @@ function rightsstatements_org_admin_validate($form, &$form_state) {
     }
   }
 }
+
+/**
+ * Implements hook_token_info().
+ *
+ */
+
+function rightsstatements_org_token_info() {
+  $tokens = array(
+    'tokens' => array(
+      'node' => array(
+        'field_rights_statement_text' => array(
+          'name' => t('RightsStatement.org Text'),
+          'description' => t('Textual representation of the RightsStatement.org value'),
+        ),
+        'field_rights_statement_uri' => array(
+          'name' => t('RightsStatement.org Text'),
+          'description' => t('URI to the RightsStatement.org page or custom URL defined by the configuration.'),
+        ),
+      )
+    )
+  );
+  return $tokens;
+}
+
+/**
+ * Implements hook_tokens().
+ *
+ */
+function rightsstatements_org_tokens($type, $tokens, $data, $options) {
+  global $base_url;
+  //We fill up $replacements with any values we need.
+  $replacements = array();
+
+  if($type == 'entity' && !empty($data['entity'])) {
+    $node = $data['entity'];
+    $values = _get_rightsstatement_values();
+    foreach($tokens as $name => $original) {
+      if (isset($node->field_rights_statement['und'])) {
+        $statement = $values[$node->field_rights_statement['und'][0]['stmt']];
+        switch($name) {
+
+          case 'field_rights_statement_text':
+            $replacements[$original] = $statement['statement'];
+            break;
+
+          case 'field_rights_statement_uri':
+            // Do we have a custom URL?
+            $link = variable_get('rightsstatements_org_link', 2);
+            if ($link == 1) { // Custom Link
+              $uri = variable_get('rightsstatements_org_custom_url', '');
+              if (!preg_match('/^http/', $uri)) {
+                $uri = $base_url.$uri;
+              }
+              $replacements[$original] = $uri;
+            } elseif ($link == 2) { // rightstatement.org url
+              $replacements[$original] = $statement['uri'];
+            }
+            break;
+        }
+      }
+    }
+  }
+  return $replacements;
+}
